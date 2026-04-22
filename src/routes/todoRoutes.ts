@@ -23,8 +23,8 @@ todoRoutes.post('/', (req, res) => {
 
   // @ts-expect-error
   const userId = req.userID
-  const stmt = dbSqlite.prepare('INSERT INTO todo (user_id, text) VALUES (?, ?)')
-  const info = stmt.run(userId, todoText)
+  const insertTodo = dbSqlite.prepare('INSERT INTO todo (user_id, text) VALUES (?, ?)')
+  const info = insertTodo.run(userId, todoText)
 
   res.json({ id: info.lastInsertRowid, user_id: userId, task: todoText, completed: false })
 })
@@ -40,8 +40,8 @@ todoRoutes.put('/:id', (req, res) => {
 
   // @ts-expect-error
   const userId = req.userID
-  const stmt = dbSqlite.prepare('UPDATE todo SET complete = ? WHERE id = ? AND user_id = ?')
-  const result = stmt.run(nextCompleted ? 1 : 0, id, userId)
+  const updateTodo = dbSqlite.prepare('UPDATE todo SET complete = ? WHERE id = ? AND user_id = ?')
+  const result = updateTodo.run(nextCompleted ? 1 : 0, id, userId)
 
   if (result.changes === 0) {
     return res.status(404).json({ message: 'Todo not found' })
@@ -55,8 +55,8 @@ todoRoutes.delete('/:id', (req, res) => {
   // @ts-expect-error
   const userId = req.userID
 
-  const stmt = dbSqlite.prepare('DELETE FROM todo WHERE id = ? AND user_id = ?')
-  const result = stmt.run(id, userId)
+  const deleteTodo = dbSqlite.prepare('DELETE FROM todo WHERE id = ? AND user_id = ?')
+  const result = deleteTodo.run(id, userId)
 
   if (result.changes === 0) {
     return res.status(404).json({ message: 'Todo not found' })
