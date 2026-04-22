@@ -31,3 +31,5 @@ test-output/
 # Ignore temporary files
 tmp/
 temp/
+
+/src/generated/prisma

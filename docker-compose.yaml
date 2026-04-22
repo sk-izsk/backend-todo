@@ -1,0 +1,36 @@
+services:
+  app:
+    build: .
+    container_name: todo_app
+    ports:
+      - '5002:3020'
+    environment:
+      - DATABASE_URL=postgresql://postgres:password@db:5432/todo_db
+      - JWT_SECRET=your_jwt_secret
+      - NODE_ENV=development
+      - PORT=3020
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "bun install --frozen-lockfile && bun --hot src/server.ts"
+    volumes:
+      - .:/app
+      - /app/node_modules
+  db:
+    image: postgres:13-alpine
+    container_name: todo_db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=todo_db
+    ports:
+      - '5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d todo_db']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+volumes:
+  postgres_data:

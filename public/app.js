@@ -1,5 +1,3 @@
-let token = localStorage.getItem('token')
-
 let isLoading = false
 let isAuthenticating = false
 let isRegistration = false
@@ -23,6 +21,23 @@ const addTodoBtn = document.getElementById('addTodoBtn')
 // const deleteBtn = document.getElementById('')
 // const updateBtn =
 
+class ApiError extends Error {
+    constructor(message, status) {
+        super(message)
+        this.name = 'ApiError'
+        this.status = status
+    }
+}
+
+function isUnauthorizedError(err) {
+    return err instanceof ApiError && (err.status === 401 || err.status === 403)
+}
+
+function showInlineError(message) {
+    textError.innerText = message
+    textError.style.display = 'block'
+}
+
 function showAuthView() {
     nav.style.display = 'none'
     header.style.display = 'none'
@@ -38,6 +53,27 @@ async function showDashboard() {
     authContent.style.display = 'none'
 
     await fetchTodos()
+}
+
+async function apiRequest(path, options = {}) {
+    const response = await fetch(apiBase + path, {
+        credentials: 'include',
+        ...options,
+        headers: {
+            ...options.headers
+        }
+    })
+
+    const contentType = response.headers.get('content-type') || ''
+    const isJson = contentType.includes('application/json')
+    const data = isJson ? await response.json() : null
+
+    if (!response.ok) {
+        const message = data?.message || `Request failed with status ${response.status}`
+        throw new ApiError(message, response.status)
+    }
+
+    return data
 }
 
 function updateHeaderText() {
@@ -148,44 +184,25 @@ async function authenticate() {
     authBtn.innerText = 'Authenticating...'
 
     try {
-        let data
         if (isRegistration) {
-            // register an account
-            const response = await fetch(apiBase + 'auth/register', {
+            await apiRequest('auth/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username: emailVal, password: passVal })
             })
-            data = await response.json()
         } else {
-            // login an account
-            const response = await fetch(apiBase + 'auth/login', {
+            await apiRequest('auth/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username: emailVal, password: passVal })
             })
-            data = await response.json()
         }
 
-        if (data.token) {
-            token = data.token
-            localStorage.setItem('token', token)
-
-            // authenicating into loading
-            authBtn.innerText = 'Loading...'
-
-            // fetch todos
-            await fetchTodos()
-
-            // show dashboard
-            showDashboard()
-        } else {
-            throw Error('❌ Failed to authenticate...')
-        }
+        authBtn.innerText = 'Loading...'
+        await showDashboard()
 
     } catch (err) {
-        console.log(err.message)
-        textError.innerText = err.message
+        textError.innerText = err instanceof Error ? err.message : 'Failed to authenticate'
         textError.style.display = 'block'
     } finally {
         authBtn.innerText = 'Submit'
@@ -197,22 +214,14 @@ async function authenticate() {
 
 async function logout() {
     try {
-        if (token) {
-            await fetch(apiBase + 'auth/logout', {
-                method: 'POST',
-                headers: {
-                    'Authorization': token
-                }
-            })
-        }
-    } catch (err) {
-        console.log('Logout request failed', err)
+        await apiRequest('auth/logout', {
+            method: 'POST'
+        })
+    } catch {
+        // Reset UI state even if logout request fails.
     } finally {
-        // Reset local auth state even if network fails.
-        token = null
         todos = []
         selectedTab = 'All'
-        localStorage.removeItem('token')
         showAuthView()
     }
 }
@@ -221,37 +230,56 @@ async function logout() {
 
 async function fetchTodos() {
     isLoading = true
-    const response = await fetch(apiBase + 'todos', {
-        headers: { 'Authorization': token }
-    })
-    const todosData = await response.json()
-    todos = todosData
-    isLoading = false
-    renderTodos()
+    try {
+        todos = await apiRequest('todos')
+        textError.style.display = 'none'
+        renderTodos()
+    } catch (err) {
+        if (isUnauthorizedError(err)) {
+            showAuthView()
+            return
+        }
+
+        showInlineError(err instanceof Error ? err.message : 'Failed to fetch todos')
+    } finally {
+        isLoading = false
+    }
 }
 
 async function updateTodo(index) {
-    // set task complete status to true
-    await fetch(apiBase + 'todos' + '/' + index, {
-        method: 'PUT',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': token
-        },
-        body: JSON.stringify({ task: todos.find(val => val.id === index).task, completed: 1 })
-    })
-    fetchTodos()
+    try {
+        await apiRequest('todos' + '/' + index, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ task: todos.find(val => val.id === index).task, completed: 1 })
+        })
+        await fetchTodos()
+    } catch (err) {
+        if (isUnauthorizedError(err)) {
+            showAuthView()
+            return
+        }
+
+        showInlineError(err instanceof Error ? err.message : 'Failed to update todo')
+    }
 }
 
 async function deleteTodo(index) {
-    // set task complete status to true
-    await fetch(apiBase + 'todos' + '/' + index, {
-        method: 'DELETE',
-        headers: {
-            'Authorization': token
-        },
-    })
-    fetchTodos()
+    try {
+        await apiRequest('todos' + '/' + index, {
+            method: 'DELETE'
+        })
+        await fetchTodos()
+    } catch (err) {
+        if (isUnauthorizedError(err)) {
+            showAuthView()
+            return
+        }
+
+        showInlineError(err instanceof Error ? err.message : 'Failed to delete todo')
+    }
 }
 
 async function addTodo() {
@@ -261,32 +289,41 @@ async function addTodo() {
 
     if (!task) { return }
 
-    await fetch(apiBase + 'todos', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': token
-        },
-        body: JSON.stringify({ task })
-    })
-    todoInput.value = ''
-    fetchTodos()
+    try {
+        await apiRequest('todos', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ task })
+        })
+        todoInput.value = ''
+        await fetchTodos()
+    } catch (err) {
+        if (isUnauthorizedError(err)) {
+            showAuthView()
+            return
+        }
+
+        showInlineError(err instanceof Error ? err.message : 'Failed to add todo')
+    }
 }
 
 // UTILITY FUNCTIONS
 
 
-// load page and read local storage for key
+async function initializeApp() {
+    try {
+        await showDashboard()
+    } catch (err) {
+        if (isUnauthorizedError(err)) {
+            showAuthView()
+            return
+        }
 
-// default to login screen
-
-// if is authenticated, show todo app
-if (token) {
-    async function run() {
-        await fetchTodos()
-        showDashboard()
+        showAuthView()
+        showInlineError(err instanceof Error ? err.message : 'Failed to initialize app')
     }
-    run()
-} else {
-    showAuthView()
 }
+
+initializeApp()
