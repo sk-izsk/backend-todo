@@ -4,6 +4,7 @@ import path from 'path'
 import { ENV } from './config/config'
 import authRoutes from './routes/authRoutes'
 import todoRoutes from './routes/todoRoutes'
+import authMiddleware from './middleware/authMiddleware'
 
 const parsedPort = Number.parseInt(ENV.PORT ?? '', 10)
 const port = Number.isNaN(parsedPort) ? 3020 : parsedPort
@@ -21,7 +22,7 @@ app.get('/', (req, res) => {
 })
 
 app.use('/auth', authRoutes)
-app.use('/todos', todoRoutes)
+app.use('/todos', authMiddleware, todoRoutes)
 
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`)

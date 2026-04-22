@@ -1,48 +1,68 @@
 import express from 'express'
-import bycrypt from 'bcryptjs'
-import jwt from 'jsonwebtoken'
 import dbSqlite from '../dbSqlite'
 
 const todoRoutes = express.Router()
 
 todoRoutes.get('/', (req, res) => {
-  res.json({ message: 'Todo route' })
+  const getTodo = dbSqlite.prepare(
+    'SELECT id, user_id, text AS task, complete AS completed FROM todo WHERE user_id = ?',
+  )
+  // @ts-expect-error
+  const todos = getTodo.all(req.userID)
+  console.log('todos: ', todos)
+  res.json(todos)
 })
 
 todoRoutes.post('/', (req, res) => {
-  const { user_id, text } = req.body
+  const { task, text } = req.body
+  const todoText = task ?? text
 
-  if (!user_id || !text) {
-    return res.status(400).json({ message: 'User ID and text are required' })
+  if (!todoText) {
+    return res.status(400).json({ message: 'Task text is required' })
   }
 
+  // @ts-expect-error
+  const userId = req.userID
   const stmt = dbSqlite.prepare('INSERT INTO todo (user_id, text) VALUES (?, ?)')
-  const info = stmt.run(user_id, text)
+  const info = stmt.run(userId, todoText)
 
-  res.json({ id: info.lastInsertRowid, user_id, text, complete: false })
+  res.json({ id: info.lastInsertRowid, user_id: userId, task: todoText, completed: false })
 })
 
 todoRoutes.put('/:id', (req, res) => {
   const { id } = req.params
-  const { complete } = req.body
+  const { completed, complete } = req.body
+  const nextCompleted = completed ?? complete
 
-  if (complete === undefined) {
+  if (nextCompleted === undefined) {
     return res.status(400).json({ message: 'Complete status is required' })
   }
 
-  const stmt = dbSqlite.prepare('UPDATE todo SET complete = ? WHERE id = ?')
-  stmt.run(complete, id)
+  // @ts-expect-error
+  const userId = req.userID
+  const stmt = dbSqlite.prepare('UPDATE todo SET complete = ? WHERE id = ? AND user_id = ?')
+  const result = stmt.run(nextCompleted ? 1 : 0, id, userId)
 
-  res.json({ id, complete })
+  if (result.changes === 0) {
+    return res.status(404).json({ message: 'Todo not found' })
+  }
+
+  res.json({ id: Number(id), completed: Boolean(nextCompleted) })
 })
 
 todoRoutes.delete('/:id', (req, res) => {
   const { id } = req.params
+  // @ts-expect-error
+  const userId = req.userID
 
-  const stmt = dbSqlite.prepare('DELETE FROM todo WHERE id = ?')
-  stmt.run(id)
+  const stmt = dbSqlite.prepare('DELETE FROM todo WHERE id = ? AND user_id = ?')
+  const result = stmt.run(id, userId)
 
-  res.json({ id })
+  if (result.changes === 0) {
+    return res.status(404).json({ message: 'Todo not found' })
+  }
+
+  res.json({ id: Number(id) })
 })
 
 export default todoRoutes

@@ -23,6 +23,13 @@ const addTodoBtn = document.getElementById('addTodoBtn')
 // const deleteBtn = document.getElementById('')
 // const updateBtn =
 
+function showAuthView() {
+    nav.style.display = 'none'
+    header.style.display = 'none'
+    main.style.display = 'none'
+    authContent.style.display = 'flex'
+}
+
 // PAGE RENDERING LOGIC
 async function showDashboard() {
     nav.style.display = 'block'
@@ -136,7 +143,7 @@ async function authenticate() {
     ) { return }
 
     // reset error and set isAuthenticating to true
-    error.style.display = 'none'
+    textError.style.display = 'none'
     isAuthenticating = true
     authBtn.innerText = 'Authenticating...'
 
@@ -178,8 +185,8 @@ async function authenticate() {
 
     } catch (err) {
         console.log(err.message)
-        error.innerText = err.message
-        error.style.display = 'block'
+        textError.innerText = err.message
+        textError.style.display = 'block'
     } finally {
         authBtn.innerText = 'Submit'
         isAuthenticating = false
@@ -188,8 +195,26 @@ async function authenticate() {
 
 }
 
-function logout() {
-    // wipe states and clear cached token
+async function logout() {
+    try {
+        if (token) {
+            await fetch(apiBase + 'auth/logout', {
+                method: 'POST',
+                headers: {
+                    'Authorization': token
+                }
+            })
+        }
+    } catch (err) {
+        console.log('Logout request failed', err)
+    } finally {
+        // Reset local auth state even if network fails.
+        token = null
+        todos = []
+        selectedTab = 'All'
+        localStorage.removeItem('token')
+        showAuthView()
+    }
 }
 
 // CRUD LOGIC
@@ -262,4 +287,6 @@ if (token) {
         showDashboard()
     }
     run()
+} else {
+    showAuthView()
 }
